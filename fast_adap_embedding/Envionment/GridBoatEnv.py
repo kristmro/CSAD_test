@@ -94,15 +94,16 @@ class GridWaveEnvironment:
         tau_w = tau_wf + tau_sv
 
         # Integrate vessel dynamics
-        self.vessel.integrate(0, 0, tau_6dof + tau_w)
+        self.vessel.integrate(0, 0, tau_6dof + tau_w) #zero current and beta_c
 
         # Check for goal and obstacles
         boat_pos = self.vessel.get_eta()[:2]
         done, info = self._check_termination(boat_pos)
 
         # Compute reward
-        reward = self.compute_reward(action, self.previous_action)
-        self.previous_action = action
+        #reward = self.compute_reward(action, self.previous_action)
+        #self.previous_action = action
+        reward = 0
 
         # Append trajectory for final plotting
         if self.final_plot:
@@ -112,7 +113,7 @@ class GridWaveEnvironment:
         if self.render_on:
             self.render()
 
-        return self.get_state(), reward, done, info
+        return self.get_state(), done, info, reward
 
     def reset(self):
         """Reset the vessel and environment."""
@@ -192,7 +193,7 @@ class GridWaveEnvironment:
         # Draw boat
         boat_pos = self.vessel.get_eta()[:2]
         boat_yaw = self.vessel.get_eta()[-1]
-        boat_length, boat_width = 2.578 * 3, 0.3 * 3
+        boat_length, boat_width = 2.578 * 3, 0.3 * 3 # Length: 2.578 m, Width: 0.3 m (scaled by 3)
         rotation_matrix = np.array([
             [np.cos(boat_yaw), -np.sin(boat_yaw)],
             [np.sin(boat_yaw), np.cos(boat_yaw)]
@@ -206,11 +207,11 @@ class GridWaveEnvironment:
         rotated_corners = (rotation_matrix @ boat_corners).T + boat_pos[::-1]
         self.ax.add_patch(plt.Polygon(rotated_corners, color='blue', alpha=0.8))
         arrow_length = boat_length * 0.5
-        arrow_pos = np.mean(rotated_corners[:2], axis=0)
+        arrow_pos = np.mean(rotated_corners[:2], axis=0) 
         self.ax.arrow(arrow_pos[0], arrow_pos[1],
                       arrow_length * np.cos(boat_yaw),
                       arrow_length * np.sin(boat_yaw),
-                      head_width=0.3, head_length=0.6, fc='black', ec='black')
+                      head_width=0.3, head_length=0.6, fc='black', ec='black') # Arrow for heading
         plt.pause(0.01)
 
     def plot_trajectory(self):
