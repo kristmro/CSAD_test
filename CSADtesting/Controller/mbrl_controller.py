@@ -1,5 +1,5 @@
-import torch
-from torch import nn, optim
+import tensorflow as tf
+from tensorflow.keras import layers, optimizers
 import numpy as np
 from MCSimPython.utils import three2sixDOF
 from scipy.optimize import minimize

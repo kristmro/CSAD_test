@@ -1,5 +1,5 @@
 import sys
-sys.path.append('./fast_adap_embedding')  # Adjust this path as needed
+sys.path.append('./CSADtesting')  # Adjust this path as needed
 import numpy as np
 import time
 from Environment.GridBoatEnv import GridWaveEnvironment  # Make sure your file name/path is correct
@@ -71,13 +71,15 @@ def main():
     max_steps = int(simtime / dt)
 
     # A constant action (Fx, Fy, Mz)
-    constant_action = np.array([1.5, 0, 0.0])
+    pre_action = np.array([0, 0, 0.0])
 
     print("Starting simulation...")
     start_time = time.time()
 
     for step_count in range(max_steps):
-        state, done, info, reward = env.step(constant_action)
+        state, done, info, reward = env.step(pre_action)
+
+        
         if done:
             break
 
