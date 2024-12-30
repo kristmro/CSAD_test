@@ -67,17 +67,18 @@ def main():
     )
 
     # Simulation length
-    simtime = 80.0
+    simtime = 150.0
     max_steps = int(simtime / dt)
 
     # A constant action (Fx, Fy, Mz)
-    pre_action = np.array([0, 0, 0.0])
+    pre_action = np.array([2, -10, 0.0])
 
     print("Starting simulation...")
     start_time = time.time()
 
     for step_count in range(max_steps):
         state, done, info, reward = env.step(pre_action)
+        
 
         
         if done:

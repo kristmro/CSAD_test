@@ -149,15 +149,33 @@ class GridWaveEnvironment:
         return self.get_state(), done, info, reward
 
     def _check_termination(self, boat_pos):
-        goal_north, goal_east, goal_size = self.goal
-        if (goal_north - goal_size/2 <= boat_pos[0] <= goal_north + goal_size/2 and
-            goal_east  - goal_size/2 <= boat_pos[1] <= goal_east  + goal_size/2):
-            return True, {"reason": "goal_reached"}
+        # Compute boat hull in global coords
+        hull_local = self._get_boat_hull_local_pts()
+        boat_yaw = self.vessel.get_eta()[5]
+        c, s = np.cos(boat_yaw), np.sin(boat_yaw)
+        rot = np.array([[c, s], [-s, c]])
+        hull_global = []
+        for (lx, ly) in hull_local:
+            gx, gy = rot @ np.array([lx, ly])
+            hull_global.append(np.array([boat_pos[0] + gy, boat_pos[1] + gx]))
 
+        # Check goal as bounding box
+        g_n, g_e, g_size = self.goal
+        for pt in hull_global:
+            if (g_n - g_size/2 <= pt[0] <= g_n + g_size/2 and
+                g_e - g_size/2 <= pt[1] <= g_e + g_size/2):
+                print("Goal reached!")
+                return True, {"reason": "goal_reached"}
+
+        # Check obstacles as circle collisions
         for obs_n, obs_e, obs_size in self.obstacles:
-            dist = np.linalg.norm(boat_pos - np.array([obs_n, obs_e]))
-            if dist < obs_size:
-                return True, {"reason": "collision"}
+            for pt in hull_global:
+                dist = np.linalg.norm(pt - np.array([obs_n, obs_e]))
+                if dist < obs_size / 2.0:
+                    print("Collision with obstacle!")
+                    return True, {"reason": "collision"}
+
+        return False, {}
 
         return False, {}
 
