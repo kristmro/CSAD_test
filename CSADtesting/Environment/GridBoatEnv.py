@@ -10,7 +10,7 @@ except ImportError:
 from MCSimPython.simulator.csad import CSAD_DP_6DOF
 from MCSimPython.waves.wave_loads import WaveLoad
 from MCSimPython.waves.wave_spectra import JONSWAP
-from MCSimPython.utils import three2sixDOF
+from MCSimPython.utils import three2sixDOF, six2threeDOF
 
 class GridWaveEnvironment:
     """Grid-based Wave Environment with real-time rendering."""
@@ -177,17 +177,19 @@ class GridWaveEnvironment:
 
         return False, {}
 
-        return False, {}
 
     def get_state(self):
         eta = self.vessel.get_eta()  # 6DOF
+        nu = six2threeDOF(self.vessel.get_nu()) # Vel 6DOF->3DOF
         return {
             "boat_position": eta[:2],
             "boat_orientation": eta[-1],
+            "velocities": nu,  # Add velocities to the state
             "goal": self.goal,
             "obstacles": self.obstacles,
             "wave_conditions": self.wave_conditions
         }
+
 
     def render(self):
         if not self.render_on or self.screen is None:
