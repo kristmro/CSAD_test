@@ -1,6 +1,6 @@
 # CSAD Testing Repository
 
-OBS OBS only Gridmain.py-> GridBoatEnv.py is fully tested and correct. LS.py implements an adaptive control strategy with parameter estimation for a nonlinear pendulum, combining swing-up control and stabilizing LQR control to bring the pendulum to an upright position while estimating its dynamic parameters over time.
+OBS OBS only Gridmain.py-> GridBoatEnv.py is fully tested and should be correct except the reward function. LS.py implements an adaptive control strategy with parameter estimation for a nonlinear pendulum, combining swing-up control and stabilizing LQR control to bring the pendulum to an upright position while estimating its dynamic parameters over time.
 
 This repository serves as a testing ground for developing a reinforcement learning (RL) simulation platform tailored to the **C/S Arctic Drillship** at NTNU. The ultimate goal is to create a flexible platform that supports various adaptive motion control strategies for marine vessels, with a focus on meta-learned model-based reinforcement learning (MBRL). 
 
