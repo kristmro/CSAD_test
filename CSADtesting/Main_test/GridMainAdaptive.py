@@ -1,74 +1,69 @@
-import numpy as np
+#------------------------------------------
+# Step 1 Import Necessary Libraries
+#------------------------------------------
 import sys
-sys.path.append('./CSADtesting')  # Adjust if needed
+import numpy as np
+import time
+# Adjust path if needed so Python finds your Environment folder, etc.
+sys.path.append('./CSADtesting')
+from CSADtesting.Environment.GridBoatEnv import GridWaveEnvironment
+from CSADtesting.Controller.feedback_pd import feedback_linearizing_pd_controller ##This is not (at all) ideal for station keeping applications
+from MCSimPython.utils import Rz, six2threeDOF, three2sixDOF
+from MCSimPython.control.basic import PID
+from CSADtesting.allocation.allocation import CSADThrusterAllocator
+def main():
+    # Simulation time step
+    dt = 0.1  
+    # Total simulation time, steps
+    simtime = 300
+    max_steps = int(simtime / dt)
 
-from Environment.GridBoatEnv import GridWaveEnvironment
-from Controller.meta_learner import MetaLearner
-from Controller.meta_controller import MetaAdaptiveController
+    # Start pose 
+    start_pos = (2, 2, 0)
 
-def train_meta_controller():
-    # Initialize environment & meta-learner
-    env = GridWaveEnvironment()
-    meta_learner = MetaLearner()
-    controller = MetaAdaptiveController(meta_learner)
-    
-    # Training parameters
-    num_epochs = 10
-    episodes_per_epoch = 2
+    # Initial wave conditions 
+    wave_conditions = (3, 20, 0)
+    # Create environment
+    env = GridWaveEnvironment(
+        dt=dt,
+        grid_width=15,
+        grid_height=6,
+        render_on=True,    # True => use pygame-based rendering
+        final_plot=True    # True => at the end, produce a matplotlib plot of the trajectory
+    )
+    env.set_task(
+        start_position=start_pos,
+        wave_conditions=wave_conditions,
+        four_corner_test=True,
+        simtime=simtime
+    )
+    # Create the PD-based controller
+    controller=PID(kp=[100.0, 100.0, 5.0], kd=[100.0, 100.0, 100.0], ki=[1.0, 1.0, 1.0])
+    # Start the simulation
+    print("Starting simulation...")
+    start_time = time.time()
 
-    for epoch in range(num_epochs):
-        epoch_loss = 0.0
+    for step_count in range(max_steps):
+        eta_d, nu_d, eta_d_ddot, nu_d_body = env.get_four_corner_nd(step_count)
+        state = env.get_state()
+        nu_d = Rz(state["eta"][-1]) @ nu_d
+        tau = controller.get_tau(eta=six2threeDOF(state["eta"]),eta_d=eta_d, nu= state["nu"], nu_d=nu_d)
+
+        u = CSADThrusterAllocator().allocate(tau[0], tau[1], tau[2])
+        #print(eta_d, tau)
+        _, done, info, _ = env.step(action = u)
+        if done:
+            # The environment signaled termination (goal reached w/ heading or collision)
+            print("Environment returned done; stopping simulation, because", info)
+            break
+    total_time = time.time() - start_time
+    print(f"Wall-clock time: {total_time:.2f} s")
+    print(f"Simulation speed: {(simtime / total_time):.2f}x real-time")
+    print("Simulation completed.")
+    # After finishing, if final_plot=True, plot the boat trajectory
+    env.plot_trajectory()
         
-        for _ in range(episodes_per_epoch):
-            # Randomize environment scenario
-            start_pos = (np.random.uniform(0, 5),
-                         np.random.uniform(0, 5),
-                         np.random.uniform(0, 2*np.pi))
-            wave_cond = (np.random.uniform(0.5, 2.5),
-                         np.random.uniform(3, 6))
-            
-            env.set_task(start_pos, wave_cond)
-            done = False
-            states_buffer, disturbances_buffer = [], []
-            
-            while not done:
-                state = env.get_state()
-                action = controller.compute_action(state, env.goal)
-                next_state, reward, done, info = env.step(action)
-
-                # Suppose "info['true_disturbance']" holds the actual wave torque 
-                # for that step (3D). Or you have some known "tau_wave" from the sim.
-                true_dist = info["true_disturbance"]  
-
-                # Store data for training
-                # Flatten state into shape (7,) if your net expects that.
-                # e.g. [x, y, heading, u, v, r, wave_param1, wave_param2, ...]
-                # Make sure you keep consistent shapes
-                s_input = np.concatenate([
-                    state["boat_position"],
-                    [state["boat_orientation"]],
-                    state["velocities"],
-                    state["wave_conditions"]
-                ])
-                states_buffer.append(s_input)
-                disturbances_buffer.append(true_dist)
-            
-            # Now build a "batch" for meta_learner
-            states_arr = np.array(states_buffer)         # shape (T, 7)
-            dist_arr   = np.array(disturbances_buffer)   # shape (T, 3)
-            batch = {
-                "states": states_arr,
-                "tau_err": dist_arr
-            }
-
-            # Convert to jax.numpy inside train_on_batch
-            meta_learner.train_on_batch(batch)
-        
-        # (Optional) Evaluate or compute epoch_loss
-        # Could do a quick pass of meta_loss on some validation
-        # For simplicity, we skip it here
-        print(f"Epoch {epoch} completed.")
 
 
 if __name__ == "__main__":
-    train_meta_controller()
+    main()

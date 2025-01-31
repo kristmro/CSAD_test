@@ -116,7 +116,7 @@ class MRACShipController:
         # Create the heading MRAC
         self.heading_mrac = MRACHeadingController(Tm=5.0, Km=1.0, gamma=0.5, dt=dt, rudder_gain=50.0)
         # Create surge PID
-        self.surge_pid = SurgePID(kp=100.0, dt=dt, desired_speed=1.0)
+        self.surge_pid = SurgePID(kp=10.0, dt=dt, desired_speed=1.0)
 
     def compute_action(self, state, goal_2d):
         """
@@ -133,9 +133,9 @@ class MRACShipController:
         Returns:
             action (np.array of shape (3,)): [Fx, Fy, Mz]
         """
-        n, e = state["boat_position"]
-        psi = state["boat_orientation"]  # heading, radians
-        vel = state["velocities"]        # [u, v, r]
+        n, e = state["eta"][:2]
+        psi = state["eta"][-1]  # heading, radians
+        vel = state["nu"]        # [u, v, r]
         u = vel[0]  # forward speed in m/s
 
         # 1) Compute desired heading
@@ -148,6 +148,7 @@ class MRACShipController:
 
         # 3) Use surge PID for forward speed
         surge_force = self.surge_pid.compute_force(u)
+
 
         # 4) Construct 3-DOF action = [Fx, Fy, Mz]
         action = np.array([surge_force, 0.0, yaw_torque])
