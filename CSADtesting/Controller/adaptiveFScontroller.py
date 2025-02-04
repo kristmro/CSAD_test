@@ -13,7 +13,7 @@ class AdaptiveFSController():
         - Improved tuning.
         - 
     '''
-    def __init__(self, dt, M, D, N=15):
+    def __init__(self, dt, M, D, N=100):
         '''
         Initialize
 
@@ -92,7 +92,8 @@ class AdaptiveFSController():
         alpha_dot = -(self._K1 + self._kappa*np.eye(3))@z1_dot - S@R.T@eta_d_dot + R.T@eta_d_ddot        
 
         # Adaptive update law
-        theta_hat_dot = self._gamma@Phi@z2                                                                 
+        theta_hat_dot = self._gamma@Phi@z2    
+        print(theta_hat_dot)                                                             
         self.theta_hat  += (theta_hat_dot * self._dt)
 
         # Control law

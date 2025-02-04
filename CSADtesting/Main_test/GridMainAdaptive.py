@@ -7,15 +7,15 @@ import time
 # Adjust path if needed so Python finds your Environment folder, etc.
 sys.path.append('./CSADtesting')
 from CSADtesting.Environment.GridBoatEnv import GridWaveEnvironment
-from CSADtesting.Controller.feedback_pd import feedback_linearizing_pd_controller ##This is not (at all) ideal for station keeping applications
+from CSADtesting.Controller.adaptiveFScontroller import AdaptiveFSController
 from MCSimPython.utils import Rz, six2threeDOF, three2sixDOF
-from MCSimPython.control.basic import PID
+from MCSimPython.simulator.csad import CSAD_DP_6DOF
 from CSADtesting.allocation.allocation import CSADThrusterAllocator
 def main():
     # Simulation time step
     dt = 0.1  
     # Total simulation time, steps
-    simtime = 300
+    simtime = 100
     max_steps = int(simtime / dt)
 
     # Start pose 
@@ -23,6 +23,9 @@ def main():
 
     # Initial wave conditions 
     wave_conditions = (3, 20, 0)
+    M = CSAD_DP_6DOF(dt)._M
+    D = CSAD_DP_6DOF(dt)._D
+    N = 100
     # Create environment
     env = GridWaveEnvironment(
         dt=dt,
@@ -38,7 +41,7 @@ def main():
         simtime=simtime
     )
     # Create the PD-based controller
-    controller=PID(kp=[100.0, 100.0, 5.0], kd=[100.0, 100.0, 100.0], ki=[1.0, 1.0, 1.0])
+    controller=AdaptiveFSController(dt, M=M, D=D, N=N)
     # Start the simulation
     print("Starting simulation...")
     start_time = time.time()
@@ -47,11 +50,11 @@ def main():
         eta_d, nu_d, eta_d_ddot, nu_d_body = env.get_four_corner_nd(step_count)
         state = env.get_state()
         nu_d = Rz(state["eta"][-1]) @ nu_d
-        tau = controller.get_tau(eta=six2threeDOF(state["eta"]),eta_d=eta_d, nu= state["nu"], nu_d=nu_d)
+        tau = controller.get_tau(eta=six2threeDOF(state["eta"]),eta_d=eta_d, nu= state["nu"], eta_d_dot=nu_d, eta_d_ddot= eta_d_ddot, t=step_count*dt, calculate_bias=False)
 
         u = CSADThrusterAllocator().allocate(tau[0], tau[1], tau[2])
         #print(eta_d, tau)
-        _, done, info, _ = env.step(action = u)
+        _, done, info, _ = env.step(action = tau)
         if done:
             # The environment signaled termination (goal reached w/ heading or collision)
             print("Environment returned done; stopping simulation, because", info)

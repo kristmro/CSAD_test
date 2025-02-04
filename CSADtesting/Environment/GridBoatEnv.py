@@ -7,7 +7,7 @@ from MCSimPython.simulator.csad import CSAD_DP_6DOF
 from MCSimPython.waves.wave_loads import WaveLoad
 from MCSimPython.waves.wave_spectra import JONSWAP
 from CSADtesting.filters.reference_filter import ThrdOrderRefFilter
-from MCSimPython.utils import three2sixDOF, six2threeDOF, Rz
+from MCSimPython.utils import three2sixDOF, six2threeDOF, Rz, pipi
 
 class GridWaveEnvironment:
     """Grid-based Wave Environment with real-time rendering and a simple goal/obstacle framework.
@@ -40,7 +40,7 @@ class GridWaveEnvironment:
         self.grid_height = grid_height
 
         # Create the vessel simulator
-        self.vessel = vessel(dt)
+        self.vessel = vessel(dt, method="RK4")
         self.waveload = None
         self.curr_sim_time = 0.0
 
@@ -154,7 +154,7 @@ class GridWaveEnvironment:
             ]
             self.simtime = simtime
             self.t= np.arange(0, self.simtime, self.dt)
-            print("Four-corner test enabled, and simulation time NEED TO BE SET TO 300s")
+            print("Four-corner test enabled")
             self.ref_model = ThrdOrderRefFilter(self.dt, initial_eta=self.start_position)
             self.store_xd = np.zeros((len(self.t), 9)) # Store the desired trajectory 3columns for pos and 3 for vel and 3 for acc
         
@@ -164,7 +164,6 @@ class GridWaveEnvironment:
 
     def reset(self):
         """Resets the environment and vessel state."""
-        self.vessel = CSAD_DP_6DOF(self.dt, method="RK4")
         self.curr_sim_time = 0.0
 
         north0, east0, heading_deg = self.start_position
@@ -211,16 +210,15 @@ class GridWaveEnvironment:
         )
     def get_four_corner_nd(self, step_count):
         """Four-corner test for the environment."""
-        print(self.t[step_count])
-        if self.t[step_count] > 250:
+        if self.t[step_count] > int(self.simtime*5/6):
             self.ref_model.set_eta_r(self.set_points[5])
-        elif self.t[step_count] > 200:
+        elif self.t[step_count] > int(self.simtime*2/3):
             self.ref_model.set_eta_r(self.set_points[4])
-        elif self.t[step_count] > 150:
+        elif self.t[step_count] > int(self.simtime/2):
             self.ref_model.set_eta_r(self.set_points[3])
-        elif self.t[step_count] > 100:
+        elif self.t[step_count] > int(self.simtime/3):
             self.ref_model.set_eta_r(self.set_points[2])
-        elif self.t[step_count] > 50:
+        elif self.t[step_count] > int(self.simtime/6):
             self.ref_model.set_eta_r(self.set_points[1])
         else:
             self.ref_model.set_eta_r(self.set_points[0])
@@ -323,8 +321,8 @@ class GridWaveEnvironment:
             hull_global = []
             for (lx, ly) in hull_local:
                 gx, gy = rot @ np.array([lx, ly])
-                gx_global = boat_pos[0] + gy  # recall boat_pos = [n, e]
-                gy_global = boat_pos[1] + gx
+                gx_global = boat_pos[1] + gx  # east
+                gy_global = boat_pos[0] + gy  # north
                 hull_global.append(np.array([gx_global, gy_global]))
 
             for obs_n, obs_e, obs_size in self.obstacles:
@@ -561,5 +559,6 @@ class GridWaveEnvironment:
             plt.ylabel("Position [m]")
             plt.title("Desired trajectory over time")  
             plt.legend(loc='upper right', fontsize='small', scatterpoints=1, markerscale=0.1)
+            plt.show()
 
 

@@ -53,8 +53,8 @@ def main():
         start_position=start_pos,
         goal=initial_goal,
         wave_conditions=wave_conditions,
-        obstacles=None,                # or use initial_obstacles if you want obstacles
-        goal_func=goal_func,           # or None if you don’t want a moving goal
+        obstacles=initial_obstacles,                # or use initial_obstacles if you want obstacles
+        goal_func=None,           # or None if you don’t want a moving goal
         obstacle_func=obstacle_func,   # or None for static obstacles
         position_tolerance=0.3,
         goal_heading_deg=90.0,

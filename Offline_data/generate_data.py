@@ -87,13 +87,13 @@ import time
 # Adjust path if needed so Python finds your Environment folder, etc.
 sys.path.append('./CSADtesting')
 from CSADtesting.Environment.GridBoatEnv import GridWaveEnvironment
-from CSADtesting.Controller.feedback_pd import feedback_linearizing_pd_controller ##This is not (at all) ideal for station keeping applications
+from CSADtesting.Controller.LF_ import feedback_linearizing_pd_controller ##This is not (at all) ideal for station keeping applications
 from MCSimPython.utils import Rz, six2threeDOF, three2sixDOF
 def main():
     # Simulation time step
     dt = 0.01  
     # Total simulation time, steps
-    simtime = 300
+    simtime = 120
     max_steps = int(simtime / dt)
 
     # Start pose 
@@ -106,7 +106,7 @@ def main():
         dt=dt,
         grid_width=15,
         grid_height=6,
-        render_on=False,    # True => use pygame-based rendering
+        render_on=True,    # True => use pygame-based rendering
         final_plot=True    # True => at the end, produce a matplotlib plot of the trajectory
     )
     env.set_task(
