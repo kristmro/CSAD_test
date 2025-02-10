@@ -10,22 +10,26 @@ from CSADtesting.Environment.GridBoatEnv import GridWaveEnvironment
 from CSADtesting.Controller.adaptiveFScontroller import AdaptiveFSController
 from MCSimPython.utils import Rz, six2threeDOF, three2sixDOF
 from MCSimPython.simulator.csad import CSAD_DP_6DOF
-from CSADtesting.allocation.allocation import CSADThrusterAllocator
+import CSADtesting.allocation.allocation as al
+#import MCSimPython.thrust_allocation.allocation as al
+import MCSimPython.simulator.thruster_dynamics as dynamics
+import MCSimPython.thrust_allocation.thruster as thruster
+import MCSimPython.vessel_data.CSAD.thruster_data as data 
 def main():
     # Simulation time step
-    dt = 0.1  
+    dt = 0.08  
     # Total simulation time, steps
-    simtime = 100
+    simtime = 450
     max_steps = int(simtime / dt)
 
     # Start pose 
     start_pos = (2, 2, 0)
 
     # Initial wave conditions 
-    wave_conditions = (3, 20, 0)
-    M = CSAD_DP_6DOF(dt)._M
+    wave_conditions = (3,15 , 45)
+    M = CSAD_DP_6DOF(dt)._M 
     D = CSAD_DP_6DOF(dt)._D
-    N = 100
+    N = 512
     # Create environment
     env = GridWaveEnvironment(
         dt=dt,
@@ -41,20 +45,44 @@ def main():
         simtime=simtime
     )
     # Create the PD-based controller
-    controller=AdaptiveFSController(dt, M=M, D=D, N=N)
+    controller=AdaptiveFSController(dt=dt, M=M, D=D, N=N)
+    allocator = al.PseudoInverseAllocator()
+
+    for i in range(6):
+        allocator.add_thruster(thruster.Thruster(pos=[data.lx[i], data.ly[i]], K=data.K[i]))
+
     # Start the simulation
     print("Starting simulation...")
     start_time = time.time()
-
+    u_stored = [np.zeros(6)]  
+    ThrustDyn = dynamics.ThrusterDynamics()
     for step_count in range(max_steps):
         eta_d, nu_d, eta_d_ddot, nu_d_body = env.get_four_corner_nd(step_count)
         state = env.get_state()
         nu_d = Rz(state["eta"][-1]) @ nu_d
-        tau = controller.get_tau(eta=six2threeDOF(state["eta"]),eta_d=eta_d, nu= state["nu"], eta_d_dot=nu_d, eta_d_ddot= eta_d_ddot, t=step_count*dt, calculate_bias=False)
+        tau, debug = controller.get_tau(eta=six2threeDOF(state["eta"]),eta_d=eta_d, nu= state["nu"], eta_d_dot=nu_d, eta_d_ddot= eta_d_ddot, t=step_count*dt, calculate_bias=True)
+        u, alpha = allocator.allocate(tau)
+        u_stored.append(u)
+        u = ThrustDyn.limit_rate(u, u_stored[-2], data.alpha_dot_max, dt)
+        u = ThrustDyn.saturate(u, data.thruster_min, data.thrust_max)  
 
-        u = CSADThrusterAllocator().allocate(tau[0], tau[1], tau[2])
-        #print(eta_d, tau)
-        _, done, info, _ = env.step(action = tau)
+        tau_cmd = ThrustDyn.get_tau(u, alpha)
+        # Print some information
+        if step_count % 100 == 0:  # Since dt=0.1, this prints every 10 seconds
+            print("\nControl forces and commands:")
+            print(f"tau    = [{tau[0]:8.2f}, {tau[1]:8.2f}, {tau[2]:8.2f}]")
+            print(f"tau_cmd= [{tau_cmd[0]:8.2f}, {tau_cmd[1]:8.2f}, {tau_cmd[2]:8.2f}]")
+            print("\nThruster settings:")
+            print(f"Thrust magnitudes (u) = {[f'{x:6.2f}' for x in u]}")
+            print(f"Thrust angles (alpha) = {[f'{x:6.2f}' for x in alpha]}")
+            print("\nDebug information:")
+            print(f'b_hat: {debug["b_hat"]}')
+            print(f'tau_z2: {debug["tau_z2"]}')
+            print(f'tau_alpha: {debug["tau_alpha"]}')
+            print(f'tau_alpha_dot: {debug[ "tau_alpha_dot"]}')
+            print(f'z1: {debug["z1"]}')
+            print(f'z2: {debug["z2"]}')
+        _, done, info, _ = env.step(action = tau_cmd)
         if done:
             # The environment signaled termination (goal reached w/ heading or collision)
             print("Environment returned done; stopping simulation, because", info)

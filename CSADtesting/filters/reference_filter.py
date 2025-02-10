@@ -26,7 +26,7 @@ class ThrdOrderRefFilter():
         3D-array of desired vessel acceleration in NED-frame
     """
 
-    def __init__(self, dt, omega=[0.3, 0.3, 0.3], initial_eta=None):
+    def __init__(self, dt, omega=[0.15, 0.15, 0.15], initial_eta=None):
         self._dt = dt
         self.eta_d = np.zeros(3) if initial_eta is None else np.array(initial_eta)  # Start at given initial_eta
         self.eta_d_dot = np.zeros(3)

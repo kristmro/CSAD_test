@@ -210,15 +210,15 @@ class GridWaveEnvironment:
         )
     def get_four_corner_nd(self, step_count):
         """Four-corner test for the environment."""
-        if self.t[step_count] > int(self.simtime*5/6):
+        if self.t[step_count] > int(5*self.simtime/6):
             self.ref_model.set_eta_r(self.set_points[5])
-        elif self.t[step_count] > int(self.simtime*2/3):
+        elif self.t[step_count] > int(4*self.simtime/6):
             self.ref_model.set_eta_r(self.set_points[4])
-        elif self.t[step_count] > int(self.simtime/2):
+        elif self.t[step_count] > int(3*self.simtime/6):
             self.ref_model.set_eta_r(self.set_points[3])
-        elif self.t[step_count] > int(self.simtime/3):
+        elif self.t[step_count] > int(2*self.simtime/6):
             self.ref_model.set_eta_r(self.set_points[2])
-        elif self.t[step_count] > int(self.simtime/6):
+        elif self.t[step_count] > int(1*self.simtime/6):
             self.ref_model.set_eta_r(self.set_points[1])
         else:
             self.ref_model.set_eta_r(self.set_points[0])
@@ -555,10 +555,38 @@ class GridWaveEnvironment:
             # Plot the desired trajectory over time
             plt.figure(figsize=(8, 4))
             plt.plot(self.t, self.store_xd[:, 0], 'r-', label="North")
+            plt.plot(self.t, self.store_xd[:, 1], 'g-', label="East")
             plt.xlabel("Time [s]")
             plt.ylabel("Position [m]")
             plt.title("Desired trajectory over time")  
             plt.legend(loc='upper right', fontsize='small', scatterpoints=1, markerscale=0.1)
             plt.show()
+            plt.figure(figsize=(8, 4))
+            plt.plot(self.t, self.store_xd[:, 3], 'r-', label="yaw")
+            plt.xlabel("Time [s]")
+            plt.ylabel("Degrees [rad]")
+            plt.title("Desired yaw over time")
+            plt.legend(loc='upper right', fontsize='small', scatterpoints=1, markerscale=0.1)
+            plt.show()
+            plt.figure(figsize=(8, 4))
+            plt.plot(self.t, self.store_xd[:, 6], 'r-', label="North")
+            plt.plot(self.t, self.store_xd[:, 7], 'g-', label="East")
+            plt.xlabel("Time [s]")
+            plt.ylabel("Velocity [m/s]")
+            plt.title("Desired velocity over time")
+            plt.legend(loc='upper right', fontsize='small', scatterpoints=1, markerscale=0.1)
+            plt.show()
+            plt.figure(figsize=(8, 4))
+            plt.plot(self.store_xd[:,1], self.store_xd[:, 0], 'r-', label="North vs East")
+            plt.xlabel("East [m]")
+            plt.ylabel("North [m]")
+            plt.title("Desired trajectory ({}×{} Domain)".format(self.grid_width, self.grid_height))
+            plt.legend(loc='upper right', fontsize='small', scatterpoints=1, markerscale=0.1)
+            plt.grid(True)
+            plt.show()
+
+
+
+
 
 
