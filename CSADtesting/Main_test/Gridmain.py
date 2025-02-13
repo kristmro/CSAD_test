@@ -1,11 +1,10 @@
-import sys
+import cProfile
+import pstats
+from CSADtesting.Environment.GridBoatEnv import GridWaveEnvironment
+from CSADtesting.Controller.adaptive_seakeeping import MRACShipController
+from MCSimPython.utils import Rz, six2threeDOF, three2sixDOF
 import numpy as np
 import time
-
-
-from CSADtesting.Environment.GridBoatEnv import GridWaveEnvironment
-from CSADtesting.Controller.adaptive_seakeeping import MRACShipController ##This is not (at all) ideal for station keeping applications
-from MCSimPython.utils import Rz, six2threeDOF, three2sixDOF
 def main():
     """Run a simulation using GridWaveEnvironment with a combined MRAC heading + surge PID controller."""
 
@@ -21,7 +20,7 @@ def main():
     obstacle_func = None
 
     # Simulation time step
-    dt = 0.1  
+    dt = 0.01  
 
     # Create environment
     env = GridWaveEnvironment(
@@ -56,9 +55,9 @@ def main():
         obstacles=initial_obstacles,                # or use initial_obstacles if you want obstacles
         goal_func=None,           # or None if you don’t want a moving goal
         obstacle_func=obstacle_func,   # or None for static obstacles
-        position_tolerance=0.3,
+        position_tolerance=0.5,
         goal_heading_deg=90.0,
-        heading_tolerance_deg=5.0
+        heading_tolerance_deg=40.0
     )
 
     # Create the MRAC-based controller
@@ -76,6 +75,7 @@ def main():
         state = env.get_state()
 
         # 2) Compute a control action
+
         #    The environment’s updated goal is in state["goal"]
         goal_n, goal_e, _ = state["goal"]
         action = controller.compute_action(state, (goal_n, goal_e))
@@ -103,4 +103,10 @@ def main():
     env.plot_trajectory()
 
 if __name__ == "__main__":
+    profiler = cProfile.Profile()
+    profiler.enable()
     main()
+    profiler.disable()
+    
+    stats = pstats.Stats(profiler).sort_stats("cumulative")
+    stats.print_stats(10)  # print top 10 most time-consuming functions

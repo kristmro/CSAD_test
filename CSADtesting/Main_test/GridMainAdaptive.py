@@ -17,16 +17,16 @@ import MCSimPython.thrust_allocation.thruster as thruster
 import MCSimPython.vessel_data.CSAD.thruster_data as data 
 def main():
     # Simulation time step
-    dt = 0.08  
+    dt = 0.08 
     # Total simulation time, steps
-    simtime = 450
+    simtime = 100
     max_steps = int(simtime / dt)
 
     # Start pose 
     start_pos = (2, 2, 0)
 
     # Initial wave conditions 
-    wave_conditions = (3,15 , 45)
+    wave_conditions = (0.5,15 , 45)
     M = CSAD_DP_6DOF(dt)._M 
     D = CSAD_DP_6DOF(dt)._D
     N = 512

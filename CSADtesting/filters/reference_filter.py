@@ -1,10 +1,10 @@
 # reference_filter.py
 
 # ----------------------------------------------------------------------------
-# This code is part of the MCSimPython toolbox and repository, but changed to fit the CSADtesting environment.
-# Created By: Jan-Erik Hygen and modified by Kristian Magnus Roen
-# Created Date: 2023-01-30, modified 2025-01-31
-# Revised: 
+# This code is part of the MCSimPython toolbox and repository
+# Created By: Jan-Erik Hygen
+# Created Date: 2023-01-30, 
+# Revised: 2025-01-31 Kristian Magnus Roen   Now fitting the CSADtesting environment.
 # Tested:
 # Copyright (C) 2023: NTNU, Trondheim
 # Licensed under GPL-3.0-or-later
@@ -26,7 +26,7 @@ class ThrdOrderRefFilter():
         3D-array of desired vessel acceleration in NED-frame
     """
 
-    def __init__(self, dt, omega=[0.15, 0.15, 0.15], initial_eta=None):
+    def __init__(self, dt, omega=[0.2, 0.2, 0.2], initial_eta=None):
         self._dt = dt
         self.eta_d = np.zeros(3) if initial_eta is None else np.array(initial_eta)  # Start at given initial_eta
         self.eta_d_dot = np.zeros(3)

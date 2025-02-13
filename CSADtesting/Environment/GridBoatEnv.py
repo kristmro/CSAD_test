@@ -1,3 +1,70 @@
+#!/usr/bin/env python3
+"""
+------------------------------------------------------------------------------------------------------------------------------------------------
+Grid Wave Environment for Boat Navigation Simulation (MC-GYM)
+------------------------------------------------------------------------------------------------------------------------------------------------
+Author: Kristian Magnus Roen
+Date: 2025-02-13
+Contact: kmroen@outlook.com
+
+Description: 
+    This script defines the GridWaveEnvironment class which simulates boat dynamics 
+    in a grid-based domain subject to wave loads, obstacles, and dynamic goals. 
+    It leverages a 6-degree-of-freedom (6DOF) vessel simulator to compute boat motion 
+    using RK4 integration and applies wave forces generated from a JONSWAP spectrum.
+    The environment has been made for C/S Inocean Cat I Drillship (CSAD), but can be 
+    adapted to other vessels by changing the vessel simulator class.
+
+Key Features:
+  - **Boat Dynamics:** 
+      Uses a 6DOF simulator (CSAD_DP_6DOF) to integrate the vessel state based on applied 
+      control forces (converted from a 3DOF action) and wave-induced forces.
+      
+  - **Wave Loads:**
+      Generates wave forces using a JONSWAP wave spectrum. Wave parameters (significant 
+      wave height, peak period, and wave direction) are configurable, and the spectrum is 
+      discretized over a range of frequencies to compute the corresponding amplitudes.
+      
+  - **Grid-Based Domain:**
+      The simulation operates on a defined grid (with configurable width and height),
+      but the default is the same size as Mc-Lab at NTNU MarinTek,and the boat’s
+      position is tracked in terms of north and east coordinates along with its heading.
+      
+  - **Real-Time Rendering:**
+      Optionally uses pygame for real-time visualization. The rendering includes:
+        - A grid display.
+        - Visualization of the boat (as a polygon computed from its hull geometry).
+        - Drawing of goal regions and obstacles.
+      
+  - **Task Configuration:**
+      Supports dynamic tasks by setting:
+        - A starting position.
+        - A goal region (and optional dynamic goal function).
+        - Obstacles (static or dynamic via a callable function).
+        - Wave conditions.
+      Additionally, a four-corner test mode is available to assess boat maneuverability 
+      by following a sequence of predefined setpoints.
+      TODO: Make the docking task (The goal is behind a molo and beside a double dock)
+                                ----------------- (MOLO)
+
+                                |            |
+                                |   (GOAL)   |
+                                |            |
+      
+  - **Reference Trajectory Filtering:**
+      Implements a third-order reference filter (ThrdOrderRefFilter) to generate desired 
+      trajectories (position, velocity, and acceleration) from a sequence of setpoints, 
+      facilitating trajectory tracking and control evaluation.
+      
+  - **Reward Function:**
+      Provides a placeholder reward computation method that can be extended for reinforcement 
+      learning or other control-based optimization tasks.
+      
+  - **Post-Simulation Plotting:**
+      If enabled, the environment stores the boat's trajectory and velocity over time and 
+      uses matplotlib to produce plots for trajectory, reference tracking, and performance evaluation.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -10,7 +77,8 @@ from CSADtesting.filters.reference_filter import ThrdOrderRefFilter
 from MCSimPython.utils import three2sixDOF, six2threeDOF, Rz, pipi
 
 class GridWaveEnvironment:
-    """Grid-based Wave Environment with real-time rendering and a simple goal/obstacle framework.
+    """
+    Grid-based Wave Environment with real-time rendering and a simple goal/obstacle framework.
 
     Parameters
     ----------
@@ -24,6 +92,12 @@ class GridWaveEnvironment:
         If True, use pygame to render in real-time.
     final_plot : bool
         If True, store the trajectory and produce a matplotlib plot at the end.
+    vessel : class
+        Vessel simulator class to use (default: CSAD_DP_6DOF).
+
+    The environment integrates the vessel dynamics under the influence of control actions and 
+    wave-induced forces. It supports both static and dynamic goals and obstacles, and includes 
+    an optional four-corner test mode for maneuverability assessments.
     """
 
     def __init__(
@@ -47,7 +121,8 @@ class GridWaveEnvironment:
         # Rendering / plotting
         self.render_on = render_on
         self.final_plot = final_plot
-        self.trajectory = []
+        self.trajectory = []   # For storing true position (north, east, yaw)
+        self.true_vel = []     # For storing true global velocity (north, east, yaw)
 
         # Task-related
         self.start_position = None
@@ -99,7 +174,7 @@ class GridWaveEnvironment:
                  four_corner_test=False,
                  simtime=300):
         """
-        Configure the environment to a new task.
+        Configure the environment for a new task.
 
         Parameters
         ----------
@@ -108,29 +183,25 @@ class GridWaveEnvironment:
         goal : tuple (north, east, size)
             The goal region (center north/east, plus a "size" for drawing).
         wave_conditions : tuple (Hs, Tp, wave_dir_deg)
-            Significant wave height, peak period, and wave direction (deg).
+            Significant wave height, peak period, and wave direction (in degrees).
         obstacles : list of tuples [(obs_n, obs_e, obs_size), ...] or None
-            Each obstacle is a circle in the domain with center (obs_n, obs_e) 
-            and diameter 'obs_size'.
+            Each obstacle is represented as a circle with center (obs_n, obs_e) and diameter 'obs_size'.
         goal_func : callable or None
-            If not None, a function f(t) -> (g_n, g_e, g_size) defining how the goal
-            changes over time.
+            A function f(t) -> (g_n, g_e, g_size) that defines a dynamic goal.
         obstacle_func : callable or None
-            If not None, a function f(t) -> list_of_obstacles, for dynamic obstacles.
+            A function f(t) -> list_of_obstacles for dynamic obstacles.
         position_tolerance : float
-            The maximum distance from the boat center to the goal center at which
-            we consider the goal 'reached'.
+            Maximum distance (in meters) for goal attainment.
         goal_heading_deg : float or None
-            If not None, also require the boat heading to be within heading_tolerance_deg
-            of this heading to consider the goal reached.
+            Desired goal heading in degrees; if provided, heading tolerance is enforced.
         heading_tolerance_deg : float
-            Allowable heading deviation in degrees from goal_heading_deg.
-
-        FOR FOUR-CORNER TEST:
-        --------------------------------
-        TODO
+            Allowable deviation (in degrees) from goal_heading_deg.
+        four_corner_test : bool
+            If True, activates a predefined four-corner test with a sequence of setpoints.
+        simtime : int
+            Total simulation time for the four-corner test.
         """
-        self.start_position = start_position
+        self.start_position = np.array([start_position[0], start_position[1], np.deg2rad(start_position[2])])  
         self.goal = goal
         self.wave_conditions = wave_conditions
         self.obstacles = obstacles if obstacles else []
@@ -209,35 +280,97 @@ class GridWaveEnvironment:
             deep_water=True
         )
     def get_four_corner_nd(self, step_count):
-        """Four-corner test for the environment."""
-        if self.t[step_count] > int(5*self.simtime/6):
-            self.ref_model.set_eta_r(self.set_points[5])
-        elif self.t[step_count] > int(4*self.simtime/6):
-            self.ref_model.set_eta_r(self.set_points[4])
-        elif self.t[step_count] > int(3*self.simtime/6):
-            self.ref_model.set_eta_r(self.set_points[3])
-        elif self.t[step_count] > int(2*self.simtime/6):
-            self.ref_model.set_eta_r(self.set_points[2])
-        elif self.t[step_count] > int(1*self.simtime/6):
-            self.ref_model.set_eta_r(self.set_points[1])
+        """
+        Retrieves the desired reference states during a four-corner test.
+
+        Parameters
+        ----------
+        step_count : int
+            Current simulation step index.
+
+        Returns
+        -------
+        eta_d : ndarray
+            Desired global position and heading.
+        eta_d_dot : ndarray
+            Desired global velocity.
+        eta_d_ddot : ndarray
+            Desired global acceleration.
+        nu_d_body : ndarray
+            Desired velocity in the boat's body frame.
+        """
+
+        # Get the current time for this simulation step.
+        current_time = self.t[step_count]
+
+        # Decide which setpoint index to use.
+        if self.four_corner_test and np.allclose(self.start_position, self.set_points[0], atol=1e-3):
+            # When starting at set_points[0]: hold for the first 10 seconds.
+            if current_time < 10.0:
+                idx = 0
+            else:
+                # After 10 seconds, compute the segment index for set_points[1] to set_points[5].
+                shifted_time = current_time - 10.0
+                remaining_time = self.simtime - 10.0
+                segment_duration = remaining_time / 5.0
+                # Compute index: if shifted_time < segment_duration then idx==1,
+                # if shifted_time is between segment_duration and 2*segment_duration then idx==2, etc.
+                # Ensure that idx does not exceed 5.
+                idx = 1 + min(4, int(shifted_time // segment_duration))
         else:
-            self.ref_model.set_eta_r(self.set_points[0])
-        # Update reference model
+            # When not using the four-corner test, the schedule is based on fixed
+            # time fractions of the total simulation time.
+            # Note: the original comparisons use strict ">" so that exact multiples
+            # of simtime/6 fall in the lower setpoint.
+            if current_time > 5 * self.simtime / 6:
+                idx = 5
+            elif current_time > 4 * self.simtime / 6:
+                idx = 4
+            elif current_time > 3 * self.simtime / 6:
+                idx = 3
+            elif current_time > 2 * self.simtime / 6:
+                idx = 2
+            elif current_time > self.simtime / 6:
+                idx = 1
+            else:
+                idx = 0
+
+        # Set the reference using the computed setpoint index.
+        self.ref_model.set_eta_r(self.set_points[idx])
         self.ref_model.update()
         
-        # Extract reference states
-        eta_d = self.ref_model.get_eta_d()      # Desired position & heading (global frame)
-        eta_d_dot = self.ref_model.get_eta_d_dot()  # Desired velocity (global frame)
-        eta_d_ddot = self.ref_model.get_eta_d_ddot()  # Desired acceleration (global frame)
-        nu_d_body = self.ref_model.get_nu_d()        # Desired velocity in body frame
-    
-        # Store for debugging or plotting
+        # Retrieve the reference states.
+        eta_d     = self.ref_model.get_eta_d()         # Desired position & heading (global frame)
+        eta_d_dot = self.ref_model.get_eta_d_dot()       # Desired velocity (global frame)
+        eta_d_ddot= self.ref_model.get_eta_d_ddot()      # Desired acceleration (global frame)
+        nu_d_body = self.ref_model.get_nu_d()            # Desired velocity in body frame
+        
+        # Optionally store the current reference state (e.g., for debugging or plotting).
         self.store_xd[step_count] = self.ref_model._x
-
+        
         return eta_d, eta_d_dot, eta_d_ddot, nu_d_body
 
+
     def step(self, action):
-        """Performs one simulation step given the control action."""
+        """
+        Performs one simulation step with the provided control action.
+
+        Parameters
+        ----------
+        action : ndarray
+            Control action in 3DOF (e.g., surge, sway, yaw).
+
+        Returns
+        -------
+        state : dict
+            The current state of the environment.
+        done : bool
+            Flag indicating if the simulation is terminated.
+        info : dict
+            Additional information regarding termination.
+        reward : float
+            Reward computed for the current step.
+        """
         self.curr_sim_time += self.dt
 
         # Possibly update goal/obstacles over time
@@ -251,12 +384,14 @@ class GridWaveEnvironment:
         tau_6dof = three2sixDOF(action)
 
         # Wave forces
-        tau_wave = self.waveload(self.curr_sim_time, self.vessel.get_eta())
-
+        if self.waveload is not None:
+            tau_wave = self.waveload(self.curr_sim_time, self.vessel.get_eta())
+        else:
+            tau_wave = np.zeros(6)
         # Integrate vessel with control + wave
         self.vessel.integrate(0, 0, tau_6dof + tau_wave)
 
-        boat_pos = self.vessel.get_eta()[:2]
+        boat_pos = six2threeDOF(self.vessel.get_eta())
         done, info = self._check_termination(boat_pos)
 
         # Simple reward function (placeholder)
@@ -265,6 +400,7 @@ class GridWaveEnvironment:
 
         if self.final_plot:
             self.trajectory.append(boat_pos.copy())
+            self.true_vel.append(six2threeDOF(self.vessel.get_nu()))
 
         if self.render_on:
             self.render()
@@ -273,18 +409,27 @@ class GridWaveEnvironment:
 
     def _check_termination(self, boat_pos):
         """
-        if self.four_corner_test:
-            then just check if the simulation time is over
-        
-        if self.goal is not None:
-            Returns (done, info).
+        Check termination conditions based on simulation mode.
 
-            'done' is True if:
-            1) The boat is within self.position_tolerance of the goal center, AND
-                if self.goal_heading_deg is set, the boat heading is within
-                self.heading_tolerance_deg of that heading.
-            2) The boat collides with an obstacle (circle check against hull points).
-            """
+        For the four-corner test:
+            - Terminates when the simulation time exceeds the preset duration.
+        For a defined goal:
+            - Terminates if the boat is within a specified tolerance of the goal and (if applicable) 
+              the heading is within a specified tolerance.
+            - Terminates if a collision with an obstacle is detected.
+
+        Parameters
+        ----------
+        boat_pos : ndarray
+            Current boat position in 3DOF (north, east, yaw).
+
+        Returns
+        -------
+        done : bool
+            True if termination conditions are met.
+        info : dict
+            Information regarding the termination reason.
+        """
         if self.four_corner_test:
             if self.curr_sim_time > self.simtime:
                 print("Four-corner test completed.")
@@ -339,7 +484,19 @@ class GridWaveEnvironment:
             return True, {"reason": "No goal or four_corner_test initiated breaking the environment"}
 
     def get_state(self):
-        """Return a dictionary describing the current environment state."""
+        """
+        Retrieves the current state of the environment.
+
+        Returns
+        -------
+        state : dict
+            Contains:
+              - 'eta': 6DOF vessel state (position and orientation).
+              - 'nu': 3DOF velocity (converted from 6DOF).
+              - 'goal': Current goal parameters.
+              - 'obstacles': Current obstacle list.
+              - 'wave_conditions': Current wave conditions.
+        """
         eta = self.vessel.get_eta()  # 6DOF
         nu = six2threeDOF(self.vessel.get_nu()) # Vel 6DOF->3DOF
         return {
@@ -353,7 +510,7 @@ class GridWaveEnvironment:
         }
 
     def render(self):
-        """Render the environment using pygame (if available)."""
+        """Render the environment using pygame."""
         if not self.render_on or self.screen is None:
             return
 
@@ -369,7 +526,7 @@ class GridWaveEnvironment:
         self.clock.tick(1000)
 
     def _draw_grid(self):
-        """Draw a basic grid on the pygame surface."""
+        """Draw a basic grid on the pygame display."""
         if not self.render_on or self.screen is None:
             return
 
@@ -420,10 +577,18 @@ class GridWaveEnvironment:
 
     def _get_boat_hull_local_pts(self):
         """
-        Return hull points (rect-stern + single Bézier bow) in local (x,y):
-         - local x = 'starboard'
-         - local y = 'forward'
-        so that heading=0 means the boat is pointing 'north' in the global frame.
+        Computes and returns the boat hull points in local coordinates.
+
+        The hull is defined using a rectangular stern and a Bézier curve for the bow.
+        Local coordinates:
+            - x_local corresponds to 'starboard'
+            - y_local corresponds to 'forward'
+        A heading of 0 radians implies the boat is pointing north in the global frame.
+
+        Returns
+        -------
+        hull_pts_local : ndarray
+            Array of points representing the boat hull in local (x, y) coordinates.
         """
         Lpp = 2.5780001
         B   = 0.4440001
@@ -498,12 +663,28 @@ class GridWaveEnvironment:
         pygame.draw.polygon(self.screen, (0, 100, 255), pixel_pts)
 
     def compute_reward(self, action, prev_action):
-        """Compute a reward for this step (placeholder)."""
-        # You can expand this logic as needed.
+        """
+        Compute a reward for the current simulation step.
+
+        This is a placeholder reward function which can be extended for reinforcement 
+        learning or performance-based optimization.
+
+        Parameters
+        ----------
+        action : ndarray
+            Current control action.
+        prev_action : ndarray
+            Previous control action.
+
+        Returns
+        -------
+        reward : float
+            Computed reward value (default is 0.0).
+        """
         return 0.0
 
     def close(self):
-        """Close environment."""
+        """Close the pygame window and clean up."""
         if self.render_on and self.screen is not None and pygame is not None:
             pygame.quit()
 
@@ -511,7 +692,13 @@ class GridWaveEnvironment:
         self.close()
         
     def plot_trajectory(self):
-        """If final_plot=True, visualize the path taken by the boat."""
+        """
+        Visualize the boat trajectory and reference data using matplotlib.
+
+        Generates plots for:
+          - Boat trajectory vs. goal/obstacles.
+          - In the four-corner test: desired vs. actual trajectory, velocities, and yaw over time.
+        """
         if not self.final_plot:
             return
         
@@ -540,6 +727,7 @@ class GridWaveEnvironment:
             plt.show()
         if self.four_corner_test:
             traj = np.array(self.trajectory)
+            true_vel = np.array(self.true_vel)
             plt.figure(figsize=(8, 4))
             plt.plot(traj[:, 1], traj[:, 0], 'b-', label="Boat Trajectory")
             plt.plot(self.store_xd[:, 1], self.store_xd[:, 0], 'g-', label="Desired Trajectory")
@@ -556,6 +744,8 @@ class GridWaveEnvironment:
             plt.figure(figsize=(8, 4))
             plt.plot(self.t, self.store_xd[:, 0], 'r-', label="North")
             plt.plot(self.t, self.store_xd[:, 1], 'g-', label="East")
+            plt.plot(self.t, traj[:, 0], 'b-', label="North (actual)")
+            plt.plot(self.t, traj[:, 1], 'c-', label="East (actual)")
             plt.xlabel("Time [s]")
             plt.ylabel("Position [m]")
             plt.title("Desired trajectory over time")  
@@ -563,6 +753,7 @@ class GridWaveEnvironment:
             plt.show()
             plt.figure(figsize=(8, 4))
             plt.plot(self.t, self.store_xd[:, 3], 'r-', label="yaw")
+            plt.plot(self.t, traj[:, 2], 'b-', label="yaw (actual)")
             plt.xlabel("Time [s]")
             plt.ylabel("Degrees [rad]")
             plt.title("Desired yaw over time")
@@ -570,19 +761,21 @@ class GridWaveEnvironment:
             plt.show()
             plt.figure(figsize=(8, 4))
             plt.plot(self.t, self.store_xd[:, 6], 'r-', label="North")
+            plt.plot(self.t, true_vel[:, 0], 'b-', label="North (actual)")
             plt.plot(self.t, self.store_xd[:, 7], 'g-', label="East")
+            plt.plot(self.t, true_vel[:, 1], 'c-', label="East (actual)")
             plt.xlabel("Time [s]")
             plt.ylabel("Velocity [m/s]")
             plt.title("Desired velocity over time")
             plt.legend(loc='upper right', fontsize='small', scatterpoints=1, markerscale=0.1)
             plt.show()
             plt.figure(figsize=(8, 4))
-            plt.plot(self.store_xd[:,1], self.store_xd[:, 0], 'r-', label="North vs East")
-            plt.xlabel("East [m]")
-            plt.ylabel("North [m]")
-            plt.title("Desired trajectory ({}×{} Domain)".format(self.grid_width, self.grid_height))
+            plt.plot(self.t, self.store_xd[:, 8], 'r-', label="yaw")
+            plt.plot(self.t, true_vel[:, 2], 'b-', label="yaw (actual)")
+            plt.xlabel("Time [s]")
+            plt.ylabel("Velocity [rad/s]")
+            plt.title("Desired yaw velocity over time")
             plt.legend(loc='upper right', fontsize='small', scatterpoints=1, markerscale=0.1)
-            plt.grid(True)
             plt.show()
 
 

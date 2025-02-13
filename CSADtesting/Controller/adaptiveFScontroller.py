@@ -1,3 +1,31 @@
+"""
+Adaptive controller with Fourier series-based disturbance model for marine vessel dynamics.
+This script implements a Model Reference Adaptive Control (MRAC) framework using a backstepping
+design to counteract disturbances (e.g., wave-induced forces) modeled via a truncated Fourier series.
+Key functionalities include:
+  - Converting full 6-DOF vessel dynamics to a practical 3-DOF representation.
+  - Generating an exact set of frequency components using np.linspace.
+  - Constructing a (2N+1)-dimensional Fourier regressor:
+        [1, cos(w₁·t), sin(w₁·t), ..., cos(w_N·t), sin(w_N·t)]
+  - Updating adaptive parameters via an adaptive law with parameter projection to maintain bounded estimates.
+  - Computing the control input tau using a combination of feedback (with gains K1 and K2),
+    vessel dynamics (M and D), and adaptive compensation from the disturbance model.
+
+The control law is given by:
+    tau = -K2 · z₂ + D · α + M · α̇ - Φᵀ · θ̂
+where:
+    • z₁ = Rᵀ · (η - η_d)         (transformed position error)
+    • α   = Rᵀ · η̇_d - K1 · z₁ - κ · z₁   (virtual control input)
+    • z₂ = ν - α                  (velocity error)
+    • Φ is the block-diagonal Fourier regressor matrix
+    • θ̂ is the adaptive parameter vector updated by:
+          θ̂_dot = γ · (Φ · z₂)
+
+Author: Kristian Magnus Roen (adapted)
+Date: 12.02.2025
+"""
+
+
 import numpy as np
 from MCSimPython.utils import Rz, six2threeDOF, three2sixDOF, pipi, Smat
 
@@ -66,17 +94,17 @@ class AdaptiveFSController:
 
         # Tuning gains. Defaults are more moderate; tune them as necessary.
         if K1 is None:
-            self._K1 = np.diag([0.5, 0.5, 0.1])
+            self._K1 = np.diag([1, 1, 10])*0.1
         else:
             self._K1 = np.array(K1)
 
         if K2 is None:
-            self._K2 = np.diag([0.5, 0.5, 0.1])
+            self._K2 = np.diag([0.5, 0.5, 0.5])*0.001
         else:
             self._K2 = np.array(K2)
 
         if gamma is None:
-            self._gamma = np.eye((2 * self._N + 1) * 3) * 1e-3
+            self._gamma = np.eye((2 * self._N + 1) * 3) * 0.4
         else:
             gamma = np.array(gamma)
             if gamma.shape != ((2 * self._N + 1) * 3, (2 * self._N + 1) * 3):
