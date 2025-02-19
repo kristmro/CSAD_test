@@ -20,11 +20,11 @@ import pygame
 import matplotlib.pyplot as plt
 
 # Adjust these imports to match how/where you've placed the classes.
-from DiffCsad import DiffCSAD_6DOF
-from DiffWaveLoad import DiffWaveLoad
-from DiffWaveSpectra import JONSWAP
-from DiffRefFilter import DiffThrdOrderRefFilter
-from DiffUtils import three2sixDOF, six2threeDOF, pipi
+from DiffSim.Simulator.DiffCsad import DiffCSAD_6DOF
+from DiffSim.Simulator.DiffWaveLoad import DiffWaveLoad
+from DiffSim.Simulator.DiffWaveSpectra import JONSWAP
+from DiffSim.Filter.DiffRefFilter import DiffThrdOrderRefFilter
+from DiffSim.DiffUtils import three2sixDOF, six2threeDOF, pipi
 
 
 class DiffGridBoatEnvironment:

@@ -12,7 +12,7 @@ Date:   2025-02-17
 
 import torch
 from abc import ABC, abstractmethod
-from DiffUtils import pipi
+from DiffSim.DiffUtils import pipi
 
 
 class DiffVessel(ABC):

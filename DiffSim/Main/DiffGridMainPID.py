@@ -1,7 +1,7 @@
 # example_pid_run.py
 import numpy as np
 import time
-from DiffGridBoatEnv import DiffGridBoatEnvironment
+from DiffSim.Environment.DiffGridBoatEnv import DiffGridBoatEnvironment
 from MCSimPython.utils import six2threeDOF
 
 class PIDController:

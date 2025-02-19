@@ -72,7 +72,7 @@ class DiffThrdOrderRefFilter(torch.nn.Module):
         Return desired velocity in the vessel's body frame.
         This function requires a differentiable rotation; assume Rz_torch is imported.
         """
-        from DiffUtils import Rz_torch
+        from DiffSim.DiffUtils import Rz_torch
         psi = self.eta_d[-1]
         return torch.matmul(Rz_torch(psi).transpose(0,1), self.eta_d_dot)
 

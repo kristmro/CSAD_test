@@ -24,8 +24,8 @@ Date:     2025-02-17
 import torch
 import os
 import json
-from DiffVessel import DiffVessel
-from DiffUtils import Rz_torch, J_torch
+from DiffSim.Simulator.DiffVessel import DiffVessel
+from DiffSim.DiffUtils import Rz_torch, J_torch
 
 class DiffCSAD_6DOF(DiffVessel):
     """
