@@ -283,7 +283,6 @@ class GridWaveEnvironment:
             qtf_method="geo-mean",
             deep_water=True
         )
-
     def get_four_corner_nd(self, step_count):
         """
         Retrieves the desired reference states during a four-corner test.

@@ -15,13 +15,21 @@ The control law is given by:
     tau = -K2 · z₂ + D · α + M · α̇ - Φᵀ · θ̂
 where:
     • z₁ = Rᵀ · (η - η_d)         (transformed position error)
+<<<<<<< HEAD
     • α   = Rᵀ · η̇_d - (K1+k) · z₁   (virtual control input)
+=======
+    • α   = Rᵀ · η̇_d - K1 · z₁ - κ · z₁   (virtual control input)
+>>>>>>> origin/main
     • z₂ = ν - α                  (velocity error)
     • Φ is the block-diagonal Fourier regressor matrix
     • θ̂ is the adaptive parameter vector updated by:
           θ̂_dot = γ · (Φ · z₂)
 
+<<<<<<< HEAD
 Author: Kristian Magnus Roen (Orginial author Theodor Brørby)
+=======
+Author: Kristian Magnus Roen (adapted)
+>>>>>>> origin/main
 Date: 12.02.2025
 """
 
@@ -104,7 +112,7 @@ class AdaptiveFSController:
             self._K2 = np.array(K2)
 
         if gamma is None:
-            self._gamma = np.eye((2 * self._N + 1) * 3) * 0.7
+            self._gamma = np.eye((2 * self._N + 1) * 3) * 0.4
         else:
             gamma = np.array(gamma)
             if gamma.shape != ((2 * self._N + 1) * 3, (2 * self._N + 1) * 3):
