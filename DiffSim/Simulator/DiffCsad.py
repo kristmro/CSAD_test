@@ -6,19 +6,8 @@ Differentiable 6 DOF DP vessel model for CSAD implemented in PyTorch.
 This class replicates the functionality of the original CSAD_DP_6DOF class but
 operates on torch.Tensors for use in gradient-based meta learning.
 
-Author: Kristian Magnus Roen (adapted)
+Author: [Kristian Magnus Roen/ adapted from Jan-Erik Hygen]
 Date:   2025-02-17
-"""
-#!/usr/bin/env python3
-"""
-DiffCsad.py
-
-Differentiable 6 DOF DP vessel model for CSAD implemented in PyTorch.
-Mirrors the old CSAD_DP_6DOF code from csad.py, but uses DiffVessel base class
-and torch ops instead of NumPy.
-
-Author:   (Your Name)
-Date:     2025-02-17
 """
 
 import torch
@@ -34,7 +23,7 @@ class DiffCSAD_6DOF(DiffVessel):
     """
     def __init__(self,
                  dt,
-                 method="Euler",
+                 method="RK4",
                  config_file="vessel_json.json",
                  dof=6):
         """

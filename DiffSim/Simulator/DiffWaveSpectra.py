@@ -7,7 +7,7 @@ This module replicates the functionality of the old wave_spectra.py classes
 (BaseSpectrum, BasePMSpectrum, ModifiedPiersonMoskowitz, and JONSWAP)
 but uses torch operations for full differentiability.
 
-Author: [Your Name]
+Author: [Kristian Magnus Roen/ adapted from Jan-Erik Hygen]
 Date:   2025-02-17
 """
 

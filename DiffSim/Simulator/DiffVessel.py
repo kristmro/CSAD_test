@@ -6,7 +6,7 @@ Differentiable base class for simulator vessels using PyTorch.
 This class replicates the functionality of the original Vessel class,
 but stores all state as torch.Tensors and uses differentiable (torch) operations.
 
-Author: Kristian Magnus Roen (adapted)
+Author: [Kristian Magnus Roen/ adapted from Jan-Erik Hygen]
 Date:   2025-02-17
 """
 
@@ -16,7 +16,7 @@ from DiffSim.DiffUtils import pipi
 
 
 class DiffVessel(ABC):
-    def __init__(self, dt, method="Euler", config_file="", dof=6):
+    def __init__(self, dt, method="RK4", config_file="", dof=6):
         self._config_file = config_file
         self._dof = dof
         self._dt = dt

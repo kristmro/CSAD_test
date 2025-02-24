@@ -6,7 +6,7 @@ Fully differentiable PyTorch version of your original WaveLoad class.
 It replicates the same logic, reading the same config_file, and uses
 PyTorch interpolation methods (e.g. torch_lininterp_1d) to replace the old scipy.interp1d.
 
-Author: [Your Name / adapted from Jan-Erik Hygen]
+Author: [Kristian Magnus Roen/ adapted from Jan-Erik Hygen]
 Date:   2025-02-17
 """
 
