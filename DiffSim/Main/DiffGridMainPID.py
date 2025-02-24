@@ -38,7 +38,7 @@ class PIDController:
         - tau: Control forces (surge, sway, yaw)
         """
         error = eta_d - eta  # Position error
-        d_error = (error - self.prev_error) / self.dt  # Derivative error
+        d_error = nu_d-nu  # Derivative error
         self.integral_error += error * self.dt  # Integral error
 
         # PID output
@@ -55,16 +55,16 @@ def main():
     simtime = 450  # Simulation duration in seconds
     max_steps = int(simtime / dt)
 
-    env = DiffGridBoatEnvironment(dt=dt, grid_width=15, grid_height=6, render_on=True, final_plot=True)
-
+    env = DiffGridBoatEnvironment(dt=dt, grid_width=15, grid_height=6, render_on=False, final_plot=True)
+    
     # Start position and wave conditions
     start_pos = (2.0, 2.0, 0.0)  # (north, east, heading)
-    wave_cond = (0.03, 5.0, 90.0)  # (Hs=0.5m, Tp=5s, waveDir=90° => from east)
+    wave_cond = (5/90, 16/np.sqrt(90), 90.0)  # (Hs=0.5m, Tp=5s, waveDir=90° => from east)
 
     env.set_task(start_position=start_pos, wave_conditions=wave_cond, four_corner_test=True, simtime=simtime)
 
     # Initialize simple PID controller
-    pid = PIDController(Kp=[10.0, 10.0, 5.0],  # High proportional gain
+    pid = PIDController(Kp=[10.0, 15.0, 5.0],  # High proportional gain
                         Ki=[0.1, 0.1, 0.05],  # Low integral gain to prevent wind-up
                         Kd=[5.0, 5.0, 2.0],  # Derivative gain for smoothness
                         dt=dt)

@@ -270,55 +270,65 @@ class DiffGridBoatEnvironment:
 
     def get_four_corner_nd(self, step_count):
         """
-        Return reference states at each sim step for the 4-corner test.
-
-        The 'DiffThrdOrderRefFilter' is updated each step, and we store
-        the resulting reference states in self.store_xd for plotting.
+        Return reference states at each sim step for the 4-corner test as tensors.
+        Additionally, if final_plot is enabled, store a NumPy conversion of eta_d (and _x)
+        for plotting purposes.
         """
         current_time = self.t[step_count]
 
         if self.four_corner_test:
-            # Decide index of the setpoint
+            # Determine setpoint index based on current_time
             if np.allclose(self.start_position, self.set_points[0], atol=1e-3):
                 if current_time < 10.0:
                     idx = 0
                 else:
                     shifted_time = current_time - 10.0
                     remain_time = self.simtime - 10.0
-                    seg_duration = remain_time / 5.
+                    seg_duration = remain_time / 5.0
                     idx = 1 + min(4, int(shifted_time // seg_duration))
             else:
-                # fallback
-                if current_time > 5*self.simtime/6.:
-                    idx=5
-                elif current_time > 4*self.simtime/6.:
-                    idx=4
-                elif current_time > 3*self.simtime/6.:
-                    idx=3
-                elif current_time > 2*self.simtime/6.:
-                    idx=2
-                elif current_time > self.simtime/6.:
-                    idx=1
+                if current_time > 5 * self.simtime / 6.0:
+                    idx = 5
+                elif current_time > 4 * self.simtime / 6.0:
+                    idx = 4
+                elif current_time > 3 * self.simtime / 6.0:
+                    idx = 3
+                elif current_time > 2 * self.simtime / 6.0:
+                    idx = 2
+                elif current_time > self.simtime / 6.0:
+                    idx = 1
                 else:
-                    idx=0
+                    idx = 0
 
-            # Set reference in the ref filter
+            # Set the desired reference for the filter
             sp = torch.tensor(self.set_points[idx], dtype=torch.float32)
             self.ref_model.set_eta_r(sp)
             self.ref_model.update()
 
-            # gather references from the filter (Torch)
-            eta_d     = self.ref_model.get_eta_d().detach().cpu().numpy()
-            eta_d_dot = self.ref_model.get_eta_d_dot().detach().cpu().numpy()
-            eta_d_ddot= self.ref_model.get_eta_d_ddot().detach().cpu().numpy()
-            nu_d_body = self.ref_model.get_nu_d().detach().cpu().numpy()
+            # Get reference states as tensors (no conversion yet)
+            eta_d     = self.ref_model.get_eta_d()
+            eta_d_dot = self.ref_model.get_eta_d_dot()
+            eta_d_ddot= self.ref_model.get_eta_d_ddot()
+            nu_d_body = self.ref_model.get_nu_d()
 
-            # store for plotting
-            self.store_xd[step_count] = self.ref_model._x.detach().cpu().numpy()
+            # If final_plot is enabled, convert to numpy and store for plotting
+            if self.final_plot:
+                eta_d_np = eta_d.detach().cpu().numpy()
+                
+                eta_d_dot_nd = eta_d_dot.detach().cpu().numpy()
+                eta_d_ddot_nd= eta_d_ddot.detach().cpu().numpy()
+                nu_d_body_nd = nu_d_body.detach().cpu().numpy()
+                # For example, store the full state vector for later comparison
+                self.store_xd[step_count] = self.ref_model._x.detach().cpu().numpy()
+                # Optionally, if you want to store eta_d_np separately, you could:
+                # self.eta_d_np_store[step_count] = eta_d_np
+
             return eta_d, eta_d_dot, eta_d_ddot, nu_d_body
         else:
-            # If not 4-corner, just return zeros or something
-            return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
+            # Return zero tensors if not in four-corner test
+            zeros_tensor = torch.zeros(3, dtype=torch.float32)
+            return zeros_tensor, zeros_tensor, zeros_tensor, zeros_tensor
+
 
     def step(self, action):
         """

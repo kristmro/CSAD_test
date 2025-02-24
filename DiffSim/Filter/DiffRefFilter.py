@@ -22,7 +22,7 @@ class DiffThrdOrderRefFilter(torch.nn.Module):
       eta_d_dot   : Desired vessel velocity (tensor of shape (3,))
       eta_d_ddot  : Desired vessel acceleration (tensor of shape (3,))
     """
-    def __init__(self, dt, omega=[0.2, 0.2, 0.2], initial_eta=None):
+    def __init__(self, dt, omega=[0.2, 0.2, 0.1], initial_eta=None):
         super(DiffThrdOrderRefFilter, self).__init__()
         self._dt = dt
         device = torch.device("cpu")
