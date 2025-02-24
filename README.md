@@ -174,7 +174,7 @@ CSAD_test/
   Combines a Model Reference Adaptive Controller (MRAC) for heading control with a surge PID controller for forward speed, yielding a 3DOF control action.
 
 - **CSADtesting/Controller/adaptiveFScontroller.py:**  
-  Implements one adaptive controller approach. It uses a Fourier series-based method to try to online find the load of the wave-induced forces and is a model-based backstepping controller. I have further modified it from [Brørby]{https://ntnuopen.ntnu.no/ntnu-xmlui/handle/11250/3024626} to include some saturations and limitations.
+  Implements one adaptive controller approach. It uses a Fourier series-based method to try to online find the load of the wave-induced forces and is a model-based backstepping controller. I have further modified it from [Brørby, 2022](https://ntnuopen.ntnu.no/ntnu-xmlui/handle/11250/3024626) to include some saturations and limitations.
 
 - **CSADtesting/Controller/mbrl_controller.py:**  
   A prototype MBRL controller that leverages model predictions for adaptive control, inspired by established literature.
