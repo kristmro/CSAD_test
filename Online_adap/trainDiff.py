@@ -2,7 +2,7 @@
 """
 trainDiff_PyTorch.py
 
-Replicates Spencer's approach using DiffSim and PyTorch’s functional API.
+Replicates Spencer's approach using DiffSim and PyTorch's functional API.
 For seed in [0..9] and M in [2, 5, 10, 20, 30, 40, 50]:
   - Set random seed.
   - Sub-sample M trajectories from the DiffSim-generated pickle file.
@@ -114,10 +114,8 @@ def split_shuffle_sample(data, hparams, num_traj):
     return data
 
 ##############################################################################
-# 2) Batched ODE and RK38 Integrator (Ensemble Training)
+# 2) Single-Model ODE and RK38 Integrator 
 ##############################################################################
-# (We assume the known prior dynamics come from DiffSim’s csad, which we import elsewhere.)
-# Also, we assume that an appropriate batched rotation function is used.
 
 def Rz_torch_2(psi):
     """
@@ -133,7 +131,10 @@ def Rz_torch_2(psi):
     row3 = torch.stack([zero, zero, one], dim=-1)
     return torch.stack([row1, row2, row3], dim=-2)
 
-def ode_batched(x, t, u, params):
+def ode_single(x, t, u, params):
+    """
+    ODE function for a single model (no ensemble dimension)
+    """
     # Split state into eta and nu:
     eta = x[..., :3]  # (..., 3)
     nu  = x[..., 3:]  # (..., 3)
@@ -166,6 +167,8 @@ def ode_batched(x, t, u, params):
     
     return torch.cat([eta_d, nu_dot], dim=-1)
 
+# Vectorized ODE function across ensemble dimension
+ode_batched = vmap(ode_single, in_dims=(0, 0, 0, 0))
 
 def rk38_step_batched(func, h, x, t, *args):
     """
@@ -257,26 +260,42 @@ get_params = get_params_fn()
 ##############################################################################
 # 4) Loss Function and Training Step
 ##############################################################################
-def loss_fn(params, regularizer, t, x, u, t_next, x_next):
-    # Here, t, x, u, etc. have shape [num_models, T, ...] (for each ensemble model)
-    # We flatten the time dimension.
-    num_models, T = x.shape[0], x.shape[1]
-    x_flat      = x.reshape(num_models * T, -1)         # (B,6)
-    t_flat      = t.reshape(num_models * T)             # (B,)
-    u_flat      = u.reshape(num_models * T, -1)           # (B,3)
-    t_next_flat = t_next.reshape(num_models * T)          # (B,)
-    x_next_flat = x_next.reshape(num_models * T, -1)       # (B,6)
+def loss_fn_single(params, regularizer, t, x, u, t_next, x_next):
+    """
+    Loss function for a single model with its corresponding trajectory
+    t, x, u shapes: (T, ...)
+    """
+    T = x.shape[0]
+    x_flat = x.reshape(T, -1)          # (T, 6)
+    t_flat = t.reshape(T)              # (T,)
+    u_flat = u.reshape(T, -1)          # (T, 3)
+    t_next_flat = t_next.reshape(T)    # (T,)
+    x_next_flat = x_next.reshape(T, -1) # (T, 6)
     dt = t_next_flat - t_flat
+    
     # Use RK38 to compute one-step prediction for each sample.
-    x_next_est_flat = rk38_step_batched(ode_batched, dt, x_flat, t_flat, u_flat, params)
+    x_next_est_flat = rk38_step_batched(ode_single, dt, x_flat, t_flat, u_flat, params)
     loss_val = torch.sum((x_next_flat - x_next_est_flat)**2)
-    num_samples = t_flat.numel()
-    return (loss_val + regularizer * tree_normsq(params)) / num_samples
+    
+    # Add regularization
+    reg_loss = tree_normsq(params)
+    
+    return (loss_val + regularizer * reg_loss) / T
+
+# Vectorized loss function across ensemble models
+loss_fn_batched = vmap(loss_fn_single, in_dims=(0, None, 0, 0, 0, 0, 0))
 
 def step(idx, opt_state, regularizer, batch):
     params = get_params(opt_state)
-    grad_loss = grad(loss_fn, argnums=0)
-    grads = grad_loss(params, regularizer, **batch)
+    
+    # Use vmap to compute gradients for each model in the ensemble in parallel
+    grad_loss_single = grad(loss_fn_single, argnums=0)
+    grad_loss_batched = vmap(grad_loss_single, in_dims=(0, None, 0, 0, 0, 0, 0))
+    
+    grads = grad_loss_batched(params, regularizer, 
+                            batch['t'], batch['x'], batch['u'], 
+                            batch['t_next'], batch['x_next'])
+    
     new_state = update_opt(idx, grads, opt_state)
     return new_state
 
@@ -300,6 +319,14 @@ def epoch(data, batch_size, batch_axis=1, ragged=False):
 ##############################################################################
 # 6) Main Training Loop (Ensemble Training)
 ##############################################################################
+def init_ensemble(M, shapes, hdim):
+    """Initialize M models, one for each trajectory"""
+    return {
+        'W': [0.1 * torch.randn(M, shape[0], shape[1], device=device) for shape in shapes],
+        'b': [0.1 * torch.randn(M, shape[0], device=device) for shape in shapes],
+        'A': 0.1 * torch.randn(M, 3, hdim, device=device)
+    }
+
 def main():
     seeds = range(10)
     M_values = [2, 5, 10, 20, 30, 40, 50]
@@ -333,14 +360,13 @@ def main():
             # Load and process data
             data, num_dof, num_traj, num_samples = load_data(file)
             data = split_shuffle_sample(data, hparams, num_traj)
-            # Data now has shapes:
-            #   t, t_next: (M, T)
-            #   x, x_next: (M, T, 6)
-            #   u: (M, T, 3)
+            
+            # Split into train and validation
             num_train_samples = int(hparams['ensemble']['train_frac'] * (data['t'].shape[1]))
             ensemble_train_data = torch.utils._pytree.tree_map(lambda a: a[:, :num_train_samples], data)
             ensemble_valid_data = torch.utils._pytree.tree_map(lambda a: a[:, num_train_samples:], data)
             
+            # Initialize ensemble of M models (one per trajectory)
             num_hlayers = hparams['ensemble']['num_hlayers']
             hdim = hparams['ensemble']['hdim']
             num_dof = 3  # as extracted from your data
@@ -350,27 +376,32 @@ def main():
             else:
                 shapes = []
 
-            ensemble = {
-                'W': [0.1 * torch.randn(shape, device=device) for shape in shapes],
-                'b': [0.1 * torch.randn((shape[0],), device=device) for shape in shapes],
-                'A': 0.1 * torch.randn((3, hdim), device=device)
-            }
-
+            # Initialize M separate models
+            ensemble = init_ensemble(M, shapes, hdim)
             
-            # Initialize optimizer states for the ensemble.
-            # (Here we treat the network as a single model; for a true ensemble, extend dimensions accordingly.)
-            from torch.utils._pytree import tree_map
+            # Initialize optimizer state for the ensemble
+            learning_rate = hparams['ensemble']['learning_rate']
             opt_state = init_opt(ensemble)
             
-            # Prepare a batch iterator over the time dimension.
+            # Prepare a batch iterator over the time dimension
             batch_size = int(hparams['ensemble']['batch_frac'] * num_train_samples)
             batch = next(epoch(ensemble_train_data, batch_size, batch_axis=1, ragged=False))
             
-            # Pre-compile (warm-up) the training step.
+            # Pre-compile (warm-up) the training step
             step_idx = 0
             _ = step(step_idx, opt_state, hparams['ensemble']['regularizer_l2'], batch)
             
-            # Optionally, compute a validation loss before training.
+            # Calculate validation loss before training
+            params = get_params(opt_state)
+            valid_loss = torch.mean(loss_fn_batched(params, 0.0, 
+                                                   ensemble_valid_data['t'], 
+                                                   ensemble_valid_data['x'],
+                                                   ensemble_valid_data['u'],
+                                                   ensemble_valid_data['t_next'],
+                                                   ensemble_valid_data['x_next']))
+            print(f"Initial validation loss: {valid_loss.item():.6f}")
+            
+            # Main training loop
             print("ENSEMBLE TRAINING: Starting gradient descent...")
             num_epochs = hparams['ensemble']['num_epochs']
             for epoch_idx in tqdm.tqdm(range(num_epochs), desc="Epochs"):
@@ -384,11 +415,16 @@ def main():
                     opt_state = step(step_idx, opt_state, hparams['ensemble']['regularizer_l2'], batch)
                     step_idx += 1
                 
-                # Optional: Add validation loss calculation at the end of each epoch
+                # Calculate validation loss at regular intervals
                 if epoch_idx % 10 == 0:
                     params = get_params(opt_state)
-                    valid_loss = loss_fn(params, 0.0, **ensemble_valid_data)
-                    print(f"Epoch {epoch_idx}: Validation loss = {valid_loss:.6f}")
+                    valid_loss = torch.mean(loss_fn_batched(params, 0.0, 
+                                                         ensemble_valid_data['t'], 
+                                                         ensemble_valid_data['x'],
+                                                         ensemble_valid_data['u'],
+                                                         ensemble_valid_data['t_next'],
+                                                         ensemble_valid_data['x_next']))
+                    print(f"Epoch {epoch_idx}: Validation loss = {valid_loss.item():.6f}")
             
             # Save results
             output_name = f"results_seed={seed}_M={M}.pkl"
