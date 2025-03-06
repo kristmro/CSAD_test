@@ -82,9 +82,7 @@ class DiffVessel(ABC):
 
         # Update internal state
         eta_new = x_new[:self._dof]
-        # Wrap angles (if desired). For a 6-DOF vessel, we often wrap the last 3 angles:
-        #   3: roll, 4: pitch, 5: yaw. The old code used: [dof//6+2:]
-        #   so it might be [3:] if dof=6. Double-check your indexing.
+        # Wrap angles
         eta_new[3:] = pipi(eta_new[3:])
 
         nu_new  = x_new[self._dof:]

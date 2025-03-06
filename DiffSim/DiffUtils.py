@@ -40,6 +40,22 @@ def Rz_torch(psi):
         torch.stack([     s,  c, torch.tensor(0.0, dtype=psi.dtype, device=psi.device)]),
         torch.stack([torch.tensor(0.0, dtype=psi.dtype, device=psi.device), torch.tensor(0.0, dtype=psi.dtype, device=psi.device), torch.tensor(1.0, dtype=psi.dtype, device=psi.device)])
     ])
+def Rz_torch_2(psi):
+    """
+    Compute a 3x3 rotation matrix about the z-axis in batched fashion.
+    psi can be of shape (...). The output will have shape (..., 3, 3).
+    """
+    c = torch.cos(psi)
+    s = torch.sin(psi)
+    zero = torch.zeros_like(c)
+    one  = torch.ones_like(c)
+    # Stack each row along the last dimension.
+    row1 = torch.stack([c, -s, zero], dim=-1)  # (..., 3)
+    row2 = torch.stack([s,  c, zero], dim=-1)   # (..., 3)
+    row3 = torch.stack([zero, zero, one], dim=-1) # (..., 3)
+    # Stack rows along a new dimension (penultimate) to form matrices.
+    return torch.stack([row1, row2, row3], dim=-2)  # (..., 3, 3)
+
 
 def Rzyx_torch(phi, theta, psi):
     """
@@ -239,15 +255,38 @@ def three2sixDOF(v):
     else:
         raise ValueError("Input v must be 1D or 2D tensor.")
 
+
+
+
+import torch
+import numpy as np
 def six2threeDOF(v):
     """
     Convert a 6DOF vector or matrix to 3DOF.
-    If v is a vector of shape (6,), returns tensor with elements [0, 1, 5].
-    If v is a matrix of shape (6,6), returns the submatrix at rows and columns [0,1,5].
+    - If v is a vector of shape (6,), returns the elements at indices [0, 1, 5] → shape (3,).
+    - If v is a matrix of shape (T,6) with T != 6, returns the columns [0, 1, 5] → shape (T,3).
+    - If v is a 6x6 matrix, returns the submatrix rows/cols [0, 1, 5] → shape (3,3).
     """
+    # If v is a NumPy array, convert to torch tensor
+    if isinstance(v, np.ndarray):
+        v = torch.from_numpy(v)
+
     if v.dim() == 1:
-        return v[[0,1,5]]
+        # Expect v.shape == (6,)
+        if v.size(0) != 6:
+            raise ValueError(f"Expected 6 elements in 1D, got shape {tuple(v.shape)}")
+        return v[[0, 1, 5]]
+
     elif v.dim() == 2:
-        return v[[0,1,5]][:,[0,1,5]]
+        rows, cols = v.shape
+        if rows == 6 and cols == 6:
+            # 6x6 → return submatrix
+            return v[[0, 1, 5]][:, [0, 1, 5]]
+        elif cols == 6:
+            # (T,6) → return columns [0,1,5]
+            return v[:, [0, 1, 5]]
+        else:
+            raise ValueError(f"Expected shape (T,6) or (6,6), got {v.shape} instead.")
+
     else:
-        raise ValueError("Input v must be 1D or 2D tensor.")
+        raise ValueError(f"Input must be 1D or 2D, but got dim={v.dim()}.")

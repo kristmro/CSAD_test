@@ -98,7 +98,7 @@ class DiffCSAD_6DOF(DiffVessel):
         nu_cn = Uc * torch.stack([cos_b, sin_b, torch.tensor(0.0, device=x.device, dtype=x.dtype)], dim=0)
 
         # 2) Rotate current into body frame via yaw: Rz(eta[5]).T @ nu_cn
-        R_yaw = Rz_torch(eta[5])       # shape (3,3)
+        R_yaw = Rz_torch(eta[-1])       # shape (3,3)
         nu_c3 = R_yaw.transpose(0,1) @ nu_cn  # shape (3,)
 
         # Expand to full 6 DOF by adding zeros in the last 3 components
