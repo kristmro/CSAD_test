@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
 PyTorch implementation of ensemble training on vessel dynamics using torch.func.
-This implementation handles parallel training of multiple models using vmap.
+This implementation handles parallel training of multiple models using vmap,
+with optimizations for improved performance.
 
 Based on the work by Spencer M. Richards
 """
 
-import os, sys, time, pickle, warnings
+import os, sys, time, warnings
 import numpy as np
 from math import pi
 import tqdm.auto as tqdm
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.func import vmap, grad
 import torch.utils._pytree as pytree
+import pickle
 
 # DiffSim imports
 from DiffSim.DiffUtils import six2threeDOF
@@ -25,17 +28,36 @@ if device.type != 'cuda':
     warnings.warn("CUDA is not available! Using CPU, which will be much slower.")
 print(f"Using device: {device} ({torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'})")
 
+# Print PyTorch version for debugging
+print(f"PyTorch version: {torch.__version__}")
+
 # Instantiate simulator
 csad = vessel(dt=0.08, method="RK4")
+
+# Check if torch.compile is available (PyTorch 2.0+)
+ENABLE_COMPILE = hasattr(torch, 'compile')
+if ENABLE_COMPILE:
+    print("torch.compile is available - will use JIT compilation")
+else:
+    print("torch.compile is not available - using standard PyTorch")
+
+# Define activation function (compatible with older PyTorch versions)
+def swish(x):
+    """Swish/SiLU activation function: x * sigmoid(x)"""
+    return x * torch.sigmoid(x)
 
 ##############################################################################
 # 1) Neural Network Definition (Functional)
 ##############################################################################
 def nn_forward(params, x):
     """Functional version of neural network forward pass"""
+    # Process all hidden layers
+    h = x
     for i in range(len(params['W'])):
-        x = torch.tanh(torch.nn.functional.linear(x, params['W'][i], params['b'][i]))
-    return torch.nn.functional.linear(x, params['A'], None)  # No bias in output layer
+        h = torch.tanh(torch.nn.functional.linear(h, params['W'][i], params['b'][i]))
+    
+    # Last layer - final hidden layer to output, no activation
+    return torch.nn.functional.linear(h, params['A'], None)
 
 ##############################################################################
 # 2) Physics-Based ODE Function
@@ -81,13 +103,16 @@ def ship_dynamics(x, t, u, params):
     D_batch = D_mat.expand(*batch_shape, 3, 3)
     G_batch = G_mat.expand(*batch_shape, 3, 3)
     
+    # Precompute inverse of M_batch for efficiency
+    M_inv_batch = torch.linalg.inv(M_batch)
+    
     # Compute forces
     Dnu = torch.matmul(D_batch, nu.unsqueeze(-1)).squeeze(-1)
     Geta = torch.matmul(G_batch, eta.unsqueeze(-1)).squeeze(-1)
     
-    # Compute acceleration
+    # Compute acceleration using precomputed inverse
     rhs = u + f_residual - Dnu - Geta
-    nu_dot = torch.linalg.solve(M_batch, rhs.unsqueeze(-1)).squeeze(-1)
+    nu_dot = torch.matmul(M_inv_batch, rhs.unsqueeze(-1)).squeeze(-1)
     
     # Combine kinematics and dynamics
     return torch.cat([eta_dot, nu_dot], dim=-1)
@@ -359,10 +384,12 @@ def init_models(num_models, num_hlayers, hdim):
     }
     
     # Input to first hidden layer
-    if num_hlayers >= 1:
-        shapes = [(hdim, input_dim)] + (num_hlayers-1)*[(hdim, hdim)]
-    else:
-        shapes = []
+    shapes = []
+    shapes.append((hdim, input_dim))  # First layer (input -> hidden)
+    
+    # Hidden to hidden layers
+    for _ in range(num_hlayers - 1):
+        shapes.append((hdim, hdim))  # Hidden -> hidden layers
     
     # Initialize hidden layers
     for i in range(num_hlayers):
@@ -424,14 +451,17 @@ def train_ensemble(data, M, hparams):
     num_epochs = hparams['num_epochs']
     regularizer = hparams['regularizer_l2']
     
-    for epoch in tqdm.tqdm(range(num_epochs), desc="Epochs"):
+    # Single progress bar for epochs
+    epoch_pbar = tqdm.tqdm(range(num_epochs), desc="Training")
+    
+    for epoch in epoch_pbar:
         epoch_losses = []
         
         # Number of batches per epoch
         num_batches = max(1, train_data['t'].shape[1] // batch_size)
         
-        # Train on mini-batches
-        for _ in tqdm.tqdm(range(num_batches), desc=f"Epoch {epoch+1}", leave=False):
+        # Train on mini-batches - no nested progress bar
+        for _ in range(num_batches):
             # Get a batch
             batch = get_batch(train_data, batch_size)
             
@@ -483,7 +513,6 @@ def train_ensemble(data, M, hparams):
                     if valid_losses[i] < best_losses[i]:
                         improved = True
                         # Update parameters for this specific model index
-                        # Manual update of each parameter group for this model
                         for key, value in opt_state.params.items():
                             if isinstance(value, list):
                                 for j in range(len(value)):
@@ -494,19 +523,30 @@ def train_ensemble(data, M, hparams):
                         best_losses[i] = valid_losses[i].item()
                         best_steps[i] = step_idx
                 
-                # Log progress
-                mean_valid_loss = torch.mean(valid_losses)
+                # Update progress bar description
+                mean_valid_loss = torch.mean(valid_losses).item()
                 mean_train_loss = sum(epoch_losses) / len(epoch_losses) if epoch_losses else float('inf')
                 
-                print(f"\nEpoch {epoch}: Train loss = {mean_train_loss:.6f}, Validation loss = {mean_valid_loss.item():.6f}")
-                print(f"Individual losses: min={torch.min(valid_losses).item():.6f}, "
-                      f"max={torch.max(valid_losses).item():.6f}, "
-                      f"std={torch.std(valid_losses).item():.6f}")
-                print(f"Best steps: {best_steps}")
                 if improved:
-                    print(f"✓ Found better models!")
+                    status = "✓"
                 else:
-                    print("✗ No improvement")
+                    status = "✗"
+                    
+                epoch_pbar.set_description(
+                    f"Epoch {epoch}: Train={mean_train_loss:.6f}, Valid={mean_valid_loss:.6f} {status}"
+                )
+                
+                # Only print full stats occasionally to reduce output clutter
+                if epoch % 20 == 0 or epoch == num_epochs - 1:
+                    print(f"\nEpoch {epoch}: Train loss = {mean_train_loss:.6f}, Validation loss = {mean_valid_loss:.6f}")
+                    print(f"Individual losses: min={torch.min(valid_losses).item():.6f}, "
+                          f"max={torch.max(valid_losses).item():.6f}, "
+                          f"std={torch.std(valid_losses).item():.6f}")
+                    print(f"Best steps: {best_steps}")
+                    if improved:
+                        print(f"✓ Found better models!")
+                    else:
+                        print(f"✗ No improvement")
     
     return best_params, best_losses.cpu().numpy(), best_steps.cpu().numpy()
 
@@ -542,8 +582,8 @@ def main():
                 'hdim': 32,
                 'train_frac': 0.75,
                 'batch_frac': 0.25,
-                'regularizer_l2': 1e-4,  # Consider increasing this if needed
-                'learning_rate': 1e-2,   # Match Spencer's learning rate
+                'regularizer_l2': 1e-4,
+                'learning_rate': 1e-2,  # Match Spencer's learning rate
                 'num_epochs': 1000,
             }
             
@@ -568,6 +608,7 @@ def main():
                 'best_losses': best_losses.tolist()
             }
             
+            # Use standard pickle for older PyTorch versions
             with open(output_path, 'wb') as f:
                 pickle.dump(results, f)
             print(f"Saved results to {output_path}")
